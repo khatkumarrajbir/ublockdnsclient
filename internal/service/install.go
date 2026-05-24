@@ -5,7 +5,6 @@ import (
 	"log"
 	"strings"
 
-	"github.com/nextdns/nextdns/host"
 	"github.com/ugzv/ublockdnsclient/internal/core"
 	"github.com/ugzv/ublockdnsclient/internal/state"
 )
@@ -49,7 +48,7 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 	}
 
 	// Uninstall any previous version first.
-	_ = svc.Stop()
+	_ = stopServiceAndRestoreDNS(svc)
 	_ = svc.Uninstall()
 
 	log.Println("Installing service...")
@@ -58,6 +57,8 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 		return outcome, fmt.Errorf("install service: %w", err)
 	}
 
+	// Install must fail if the service cannot start; unlike ServiceStart, this
+	// is not a repair path and we need a hard guarantee before activating DNS.
 	log.Println("Starting service...")
 	if err := svc.Start(); err != nil {
 		// Rollback: remove service if it can't start.
@@ -78,8 +79,10 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 		log.Printf("Warning: local DNS preflight failed (continuing): %v", err)
 	}
 
-	log.Println("Setting system DNS to 127.0.0.1...")
-	if err := host.SetDNS("127.0.0.1"); err != nil {
+	// Strict activation is the install contract even though the daemon also
+	// best-effort activates on startup via manageSystemDNS.
+	log.Println("Verifying system DNS points to 127.0.0.1...")
+	if err := activateSystemDNSFunc(); err != nil {
 		rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState, prevState)
 		return outcome, fmt.Errorf("set system DNS: %w", err)
 	}
@@ -95,7 +98,7 @@ func rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState bool, prevState s
 	log.Printf("Install failed, attempting rollback...")
 
 	if svc, err := baseService(); err == nil {
-		_ = svc.Stop()
+		_ = stopServiceAndRestoreDNS(svc)
 		_ = svc.Uninstall()
 	}
 
@@ -115,11 +118,11 @@ func rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState bool, prevState s
 	}
 
 	if prevDNSLocal {
-		if err := host.SetDNS("127.0.0.1"); err != nil {
+		if err := activateSystemDNSFunc(); err != nil {
 			log.Printf("Rollback warning: failed to restore local DNS setting: %v", err)
 		}
 	} else {
-		if err := host.ResetDNS(); err != nil {
+		if err := deactivateSystemDNSStrictFunc(); err != nil {
 			log.Printf("Rollback warning: failed to restore DNS defaults: %v", err)
 		}
 	}

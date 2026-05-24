@@ -27,5 +27,9 @@ func newService(profileID, dohServer, apiServer string) (service.Service, error)
 }
 
 func baseService() (service.Service, error) {
+	return baseServiceFunc()
+}
+
+var baseServiceFunc = func() (service.Service, error) {
 	return newService("", "", "")
 }

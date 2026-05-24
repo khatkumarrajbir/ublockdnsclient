@@ -80,7 +80,11 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 		InfoLog:             func(msg string) { log.Println(msg) },
 		ErrorLog:            func(err error) { log.Printf("ERROR: %v", err) },
 	}
-	var onInit []func(ctx context.Context)
+	var (
+		onInit  []func(ctx context.Context)
+		onReady []func(ctx context.Context)
+	)
+	onReady = append(onReady, manageSystemDNS)
 
 	if cfg.AccountToken != "" {
 		onInit = append(onInit, func(ctx context.Context) {
@@ -91,8 +95,9 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 	}
 
 	runner := &proxyRunner{
-		proxy:  p,
-		onInit: onInit,
+		proxy:   p,
+		onInit:  onInit,
+		onReady: onReady,
 	}
 	if err := service.Run(core.ServiceName, runner); err != nil {
 		log.Printf("Startup failed: %v", err)

@@ -12,6 +12,7 @@ import (
 type proxyRunner struct {
 	proxy   proxy.Proxy
 	onInit  []func(ctx context.Context)
+	onReady []func(ctx context.Context)
 	cancel  context.CancelFunc
 	stopped chan struct{}
 }
@@ -37,11 +38,18 @@ func (p *proxyRunner) Start() error {
 	}()
 
 	// Match NextDNS service startup behavior: return quickly after spawn,
-	// while still surfacing immediate startup failures.
+	// while still surfacing immediate startup failures. The 5s window is a
+	// best-effort readiness heuristic, not a confirmed bind — onReady hooks
+	// (e.g. system DNS activation) must tolerate the proxy stopping shortly after.
 	select {
 	case err := <-errC:
+		cancel()
+		<-p.stopped
 		return err
 	case <-time.After(5 * time.Second):
+		for _, f := range p.onReady {
+			go f(ctx)
+		}
 		return nil
 	}
 }
