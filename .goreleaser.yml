@@ -51,6 +51,12 @@ archives:
 checksum:
   name_template: SHA256SUMS
 
+signs:
+  - cmd: go
+    args: ["run", "./scripts/sign", "-in", "${artifact}", "-out", "${signature}"]
+    signature: "${artifact}.sig"
+    artifacts: checksum
+
 release:
   prerelease: auto
   extra_files:
